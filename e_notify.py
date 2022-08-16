@@ -29,6 +29,7 @@ def notify_target(args):
     try:
         os.kill(args.pid, 0)
     except ProcessLookupError:
+        logger.critical(f"The Process with PID : {args.pid} does not exist")
         raise ProcessLookupError(f"The Process with PID : {args.pid} does not exist")
 
     notify(args)
@@ -42,7 +43,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser("E-mail notifier")
     subparser = parser.add_subparsers(help="Utilities")
 
-    # parser for config
+    # ============ Parser for the config utility ======================
+    ## Modify the config file by command-line
     conf_parser = subparser.add_parser(
         "config", help="Command line utility to modify the config file"
     )
@@ -53,7 +55,8 @@ if __name__ == "__main__":
 
     conf_parser.set_defaults(func=config_target)
 
-    # parser for notify
+    #============= Parser for the notify utility ======================
+    ## Sends an e-mail when the process associated with the given PID ends
     notif_parser = subparser.add_parser(
         "notify", help="notifier, which is the main utility of the program"
     )

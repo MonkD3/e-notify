@@ -54,3 +54,8 @@ Sending a mail to the relevant team with the error dump in case of a crash could
 * Add a config file for the logger
 * Add the possibility to get information on the process execution (CPU usage, memory, ...)
 * Make possible to change the body of the mail (with a custom mail for example)
+
+
+### Ideas 
+
+* Make possible to monitor multiple processes ? ==> would be hard to manage the attachments for each

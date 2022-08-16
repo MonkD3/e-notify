@@ -7,6 +7,7 @@ import os  # File existence check, process lookup
 import smtplib, ssl  # sending secure messages
 import email.message as mail  # Formatting the mail
 import getpass  # Getting password wihtout echoing it on the terminal
+import glob
 
 logger = get_logger()
 
@@ -43,33 +44,35 @@ def _format_mail(args, sender, msg):
     if args.attach is None:
         return email
 
-    for attach_file in args.attachments:
+    for attach_path in args.attachments:
+        # Permits the use of Unix-style wildcards
+        for attach_file in glob.iglob(attach_path):
 
-        # Only take valid files
-        if not os.path.isfile(attach_file):
-            logger.warning(
-                f"The file {attach_file} doesn't exist or couldn't be found, skipping it"
-            )
-            continue
+            # Only take valid files
+            if not os.path.isfile(attach_file):
+                logger.warning(
+                    f"{attach_file.capitalize()} doesn't exist or isn't a file, skipping it"
+                )
+                continue
 
-        ctype, encoding = guess_type(attach_file)
-        if ctype is None or encoding is not None:
-            # No guess could be made, or the file is encoded (compressed), so
-            # use a generic bag-of-bits type.
-            ctype = "application/octet-stream"
-            logger.info(
-                f"The MIME type for the file '{attach_file}' could not be guessed, default to 'application/octet-stream'"
-            )
+            ctype, encoding = guess_type(attach_file)
+            if ctype is None or encoding is not None:
+                # No guess could be made, or the file is encoded (compressed), so
+                # use a generic bag-of-bits type.
+                ctype = "application/octet-stream"
+                logger.info(
+                    f"The MIME type for the file '{attach_file}' could not be guessed, default to 'application/octet-stream'"
+                )
 
-        maintype, subtype = ctype.split("/", 1)
-        with open(args.attach, "rb") as file:
-            email.add_attachment(
-                file.read(),
-                maintype=maintype,
-                subtype=subtype,
-                filename=os.path.basename(attach_file),
-            )
-        logger.debug(f"Successfully attached the file {attach_file} the the mail")
+            maintype, subtype = ctype.split("/", 1)
+            with open(args.attach, "rb") as file:
+                email.add_attachment(
+                    file.read(),
+                    maintype=maintype,
+                    subtype=subtype,
+                    filename=os.path.basename(attach_file),
+                )
+            logger.debug(f"Successfully attached the file {attach_file} the the mail")
 
     return email
 
@@ -132,7 +135,12 @@ def notify(args):
     # Testing authentication
     authentication_success = False
     for _ in range(3):
-        password = getpass.getpass("Your password :")
+
+        # Get the password from the environment, if it is not there ask the user
+        password = os.environ.get("E-NOTIFY-PASS")
+        if password is None :
+            password = getpass.getpass("Your password :")
+
         return_value = _send_mail(
             args,
             smtp_server,
@@ -155,7 +163,7 @@ def notify(args):
         exit(0)
 
     # Make the process non-blocking, child process goes to wait, parent (owner of the cmd) ends
-    # Thus freeing the console from waiting
+    # Thus freeing the console from waiting. Note that the parents share stdout/stderr with the child
     pid = os.fork()
     if pid == 0:
         _wait_process(args, smtp_server, smtp_port, sender_email, password, ssl_context)

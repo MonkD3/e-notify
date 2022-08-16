@@ -1,2 +1,7 @@
 logs.log
+
+# Don't need to push python bytecode
 *.cpython-310.pyc
+
+# Keep my personal testing address out of the repo
+conf.ini
