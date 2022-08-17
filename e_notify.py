@@ -1,8 +1,7 @@
 #!/usr/bin/python
-from src.logger import get_logger
+from src import *
 import configparser as cp
 import argparse
-import src.notify as notify
 import os
 
 logger = get_logger()
@@ -38,6 +37,7 @@ def notify_target(args):
 if __name__ == "__main__":
     # Read the configuration files
     conf.read("conf.ini")
+    set_conf(conf)
 
     # Instantiate the main parser and subparsers
     parser = argparse.ArgumentParser("E-mail notifier")
@@ -55,7 +55,7 @@ if __name__ == "__main__":
 
     conf_parser.set_defaults(func=config_target)
 
-    #============= Parser for the notify utility ======================
+    # ============= Parser for the notify utility ======================
     ## Sends an e-mail when the process associated with the given PID ends
     notif_parser = subparser.add_parser(
         "notify", help="notifier, which is the main utility of the program"

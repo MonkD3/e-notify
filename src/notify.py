@@ -1,15 +1,23 @@
+from configparser import ConfigParser
 from time import sleep  # To not surcharge the CPU while waiting
 from enum import Enum  # To make readable return value
 from mimetypes import guess_type  # To parse the type/subtype of MIME documents
 from .logger import get_logger  # Logging utility
-from ..e_notify import conf  # Configuration file
 import os  # File existence check, process lookup
 import smtplib, ssl  # sending secure messages
 import email.message as mail  # Formatting the mail
 import getpass  # Getting password wihtout echoing it on the terminal
 import glob
+import psutil
 
+# Get the logger
 logger = get_logger()
+
+# Allow to set the configuration from the top level module e_notify
+# TODO : Find a cleaner solution
+def set_conf(config):
+    global conf
+    conf = config
 
 
 class ReturnValue(Enum):
@@ -41,7 +49,7 @@ def _format_mail(args, sender, msg):
     logger.debug(f"Changed the email header 'To' to {email['To']}")
 
     # If there's no attachment, do an early return
-    if args.attach is None:
+    if args.attachments is None:
         return email
 
     for attach_path in args.attachments:
@@ -113,14 +121,15 @@ def _send_mail(
 
 
 def _wait_process(args, smtp_server, smtp_port, sender_email, password, ssl_context):
-    # Waiting for the process to end
-    try:
-        while True:
-            os.kill(args.pid, 0)
-            sleep(1)
 
-    except ProcessLookupError:
-        _send_mail(args, smtp_server, smtp_port, sender_email, password, ssl_context)
+    procs = psutil.Process(args.pid)
+
+    # Waiting for the process to end
+    alive = [procs]
+    while len(alive) != 0:
+        ended, alive = psutil.wait_procs([procs], timeout=1)
+
+    _send_mail(args, smtp_server, smtp_port, sender_email, password, ssl_context)
 
 
 def notify(args):
@@ -138,7 +147,7 @@ def notify(args):
 
         # Get the password from the environment, if it is not there ask the user
         password = os.environ.get("E-NOTIFY-PASS")
-        if password is None :
+        if password is None:
             password = getpass.getpass("Your password :")
 
         return_value = _send_mail(

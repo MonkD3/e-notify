@@ -5,3 +5,6 @@ logs.log
 
 # Keep my personal testing address out of the repo
 conf.ini
+
+# Don't commit my testing area files
+./testing_area/*
