@@ -66,6 +66,7 @@ if __name__ == "__main__":
     notif_parser.add_argument(
         "--attach",
         type=str,
+        nargs="*",
         dest="attachments",
         help="File to attach to the mail once the process has terminated",
     )

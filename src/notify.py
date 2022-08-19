@@ -1,14 +1,15 @@
 from configparser import ConfigParser
-from time import sleep  # To not surcharge the CPU while waiting
 from enum import Enum  # To make readable return value
 from mimetypes import guess_type  # To parse the type/subtype of MIME documents
 from .logger import get_logger  # Logging utility
+from typing import Iterable, Iterator  # Typing utility
 import os  # File existence check, process lookup
 import smtplib, ssl  # sending secure messages
 import email.message as mail  # Formatting the mail
 import getpass  # Getting password wihtout echoing it on the terminal
 import glob
 import psutil
+import time
 
 # Get the logger
 logger = get_logger()
@@ -26,12 +27,14 @@ class ReturnValue(Enum):
     OtherError = 2
 
 
-def _format_mail(args, sender, msg):
+def _format_mail(args, sender, subject, body):
     # ============ Creating the mail ===================
 
     email = mail.EmailMessage()
-    email["Subject"] = "Your process has finished"
+    email["Subject"] = subject
     email["From"] = sender
+
+    email.set_content(body)
 
     logger.debug(f"Changed the email header 'From' to {sender}")
 
@@ -69,11 +72,11 @@ def _format_mail(args, sender, msg):
                 # use a generic bag-of-bits type.
                 ctype = "application/octet-stream"
                 logger.info(
-                    f"The MIME type for the file '{attach_file}' could not be guessed, default to 'application/octet-stream'"
+                    f"The MIME type for the file '{attach_file}' could not be guessed, default to '{ctype}'"
                 )
 
             maintype, subtype = ctype.split("/", 1)
-            with open(args.attach, "rb") as file:
+            with open(attach_file, "rb") as file:
                 email.add_attachment(
                     file.read(),
                     maintype=maintype,
@@ -86,10 +89,8 @@ def _format_mail(args, sender, msg):
 
 
 def _send_mail(
-    args, smtp_server, smtp_port, sender_email, password, ssl_context, test_login=False
+    mail, smtp_server, smtp_port, sender_email, password, ssl_context, test_login=False
 ):
-
-    msg = "Your process has finished"
 
     # initiate the secure connexion to the server
     with smtplib.SMTP(smtp_server, smtp_port) as server:
@@ -115,21 +116,25 @@ def _send_mail(
         if not test_login:
             # Send the email
             logger.info("Sending the mail")
-            server.send_message(_format_mail(args, sender_email, msg))
+            server.send_message(mail)
 
         return ReturnValue.Success
 
 
-def _wait_process(args, smtp_server, smtp_port, sender_email, password, ssl_context):
-
+def _wait_process(args) -> Iterator[Iterable["psutil.Process"]]:
     procs = psutil.Process(args.pid)
 
-    # Waiting for the process to end
+    # Waiting for the processes to end
     alive = [procs]
-    while len(alive) != 0:
-        ended, alive = psutil.wait_procs([procs], timeout=1)
 
-    _send_mail(args, smtp_server, smtp_port, sender_email, password, ssl_context)
+    # Cache the name of the process for later
+    for proc in alive:
+        proc.name()
+        proc.__setattr__("_cmdline", " ".join(proc.cmdline()))
+
+    while len(alive) != 0:
+        ended, alive = psutil.wait_procs(alive, timeout=1)
+        yield ended
 
 
 def notify(args):
@@ -146,7 +151,7 @@ def notify(args):
     for _ in range(3):
 
         # Get the password from the environment, if it is not there ask the user
-        password = os.environ.get("E-NOTIFY-PASS")
+        password = os.environ.get("E_NOTIFY_PASS")
         if password is None:
             password = getpass.getpass("Your password :")
 
@@ -175,4 +180,18 @@ def notify(args):
     # Thus freeing the console from waiting. Note that the parents share stdout/stderr with the child
     pid = os.fork()
     if pid == 0:
-        _wait_process(args, smtp_server, smtp_port, sender_email, password, ssl_context)
+        for ended_processes in _wait_process(args):
+            for ended_proc in ended_processes:
+                subject = f"The process with pid : {ended_proc.pid} has ended"
+                body = f"""
+Process name : {ended_proc._name}
+Creation time : {time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime(ended_proc._create_time))} 
+Command line used to invoke it : '{ended_proc._cmdline}'
+                """
+                mail = _format_mail(args, sender_email, subject, body)
+                _send_mail(
+                    mail, smtp_server, smtp_port, sender_email, password, ssl_context
+                )
+    # The parent should return the pid so we can keep track of the child
+    else:
+        return pid
